@@ -7,7 +7,7 @@
 //
 //   {
 //     "mcpServers": {
-//       "agentsearch": { "command": "npx", "args": ["-y", "@agentsearch/mcp"] }
+//       "agentsearch": { "command": "npx", "args": ["-y", "@luthersystems/agentsearch"] }
 //     }
 //   }
 

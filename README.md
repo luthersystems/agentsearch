@@ -36,8 +36,8 @@ results are real agents (extracted + scored on the fly).
 ### Via MCP (recommended)
 
 ```bash
-npm install @agentsearch/mcp
-# or:  npx @agentsearch/mcp
+npm install @luthersystems/agentsearch
+# or:  npx @luthersystems/agentsearch
 ```
 
 Add to your MCP client config (Claude Desktop, Claude Code, Cursor, …):
@@ -45,7 +45,7 @@ Add to your MCP client config (Claude Desktop, Claude Code, Cursor, …):
 ```json
 {
   "mcpServers": {
-    "agentsearch": { "command": "npx", "args": ["-y", "@agentsearch/mcp"] }
+    "agentsearch": { "command": "npx", "args": ["-y", "@luthersystems/agentsearch"] }
   }
 }
 ```
