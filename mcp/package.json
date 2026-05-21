@@ -1,0 +1,43 @@
+{
+  "name": "@agentsearch/mcp",
+  "version": "0.1.0",
+  "description": "Model Context Protocol server for AgentSearch — find AI agents and MCP servers ranked by reachability, usability and quality.",
+  "license": "MIT",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "agentsearch-mcp": "dist/index.js"
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "agent",
+    "agent-discovery",
+    "agent-search",
+    "a2a",
+    "ai-agents"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/luthersystems/agentsearch.git",
+    "directory": "mcp"
+  },
+  "homepage": "https://agentsearch.luthersystems.com"
+}

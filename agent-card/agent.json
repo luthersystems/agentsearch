@@ -1,0 +1,79 @@
+{
+  "name": "AgentSearch",
+  "description": "The agent that helps agents find other agents. AgentSearch maintains a daily-scored, curated index of ~3,700 AI agents and MCP servers, and exposes natural-language search, live agent-quality scoring, and a Google-search comparison layer. Ranked by final_score = query_fit × (Blocker × 0.3·Fame + 0.3·Usability + 0.3·Functionality + 0.1·CallGraph).",
+  "url": "https://agentsearch.luthersystems.com",
+  "documentationUrl": "https://github.com/luthersystems/agentsearch",
+  "version": "0.1.0",
+  "provider": {
+    "organization": "Luther Systems",
+    "url": "https://luthersystems.com"
+  },
+  "homepage": "https://agentsearch.luthersystems.com",
+  "license": "MIT",
+  "pricing": {
+    "model": "free",
+    "rateLimit": "60 requests per minute per IP (best-effort, no auth required)"
+  },
+  "securitySchemes": {
+    "public": { "type": "none", "description": "All endpoints are publicly readable, no auth required." }
+  },
+  "capabilities": [
+    "agent discovery",
+    "MCP server discovery",
+    "agent quality scoring",
+    "semantic search",
+    "live agent reachability probe",
+    "Google-search comparison"
+  ],
+  "skills": [
+    {
+      "id": "search",
+      "name": "Search the agent index",
+      "description": "Take a natural-language query and return the top ranked agents/MCP servers from the index, with per-agent reasoning.",
+      "tags": ["search", "discovery", "ranking"],
+      "input": "A natural-language description of what the agent should do (e.g. 'read invoice pdf', 'browse the web', 'manage google calendar').",
+      "action": "Embeds the query, shortlists candidates by capability similarity, judges each shortlist member against the query with claude-haiku-4-5, ranks by final_score.",
+      "output": "Ordered list of agents with: name, url, sources, query_fit (0..1), agent_quality (0..1), final_score, and a one-sentence reasoning."
+    },
+    {
+      "id": "agent_details",
+      "name": "Get a scored agent profile",
+      "description": "Return the full scored profile for one named agent: inventory data, layer-by-layer scores (Fame/Usability/Functionality/CallGraph), reasoning, and live blocker status.",
+      "tags": ["details", "profile", "scoring"],
+      "input": "An exact agent name as it appears in the index.",
+      "action": "Look up the agent in the latest scoring tab and return the row with structured layer scores plus rationales.",
+      "output": "JSON record with name, url, description, capabilities, sources, raw payload, Blocker status, layer scores and reasoning, Overall score."
+    },
+    {
+      "id": "found_agent",
+      "name": "Live-score an arbitrary agent URL",
+      "description": "Crawl + probe + LLM-score an arbitrary agent URL using the same rubric the batch pipeline uses. Works for agents not (yet) in the index.",
+      "tags": ["scoring", "live", "probe"],
+      "input": "Agent URL (homepage, GitHub repo, A2A card, …) plus optional display name and optional user query.",
+      "action": "Hit the URL with a live HTTP probe, run the five viability gates, score Fame/Usability/Functionality via the verbatim rubric prompts, compute Overall and (if a query is supplied) final_score.",
+      "output": "JSON record matching agent_details, plus a probe summary."
+    },
+    {
+      "id": "browse",
+      "name": "Browse the full index",
+      "description": "Paginated list of every indexed agent, ranked by overall quality.",
+      "tags": ["browse", "list", "rank"],
+      "input": "Optional page and page size (default 100).",
+      "action": "Return one page of agents from the latest scoring tab sorted by Overall: score descending.",
+      "output": "Page of {name, url, Overall: score} records plus pagination metadata."
+    },
+    {
+      "id": "stats",
+      "name": "Index summary stats",
+      "description": "Distributions, top categories, and the agent-to-agent call graph for the whole index.",
+      "tags": ["stats", "rollups", "graph"],
+      "input": "(none)",
+      "action": "Aggregate over the latest scoring tab: totals, top sources/licenses, top capability clusters, top actions, stars / recency / speed distributions, call-graph edges.",
+      "output": "JSON object with summary counts, ranked rollups, bucket distributions, and node-edge lists for the call graph and capability nearest-neighbor network."
+    }
+  ],
+  "relatedAgents": [
+    "https://github.com/punkpeye/awesome-mcp-servers",
+    "https://a2aregistry.org"
+  ]
+}

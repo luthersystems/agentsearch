@@ -1,0 +1,216 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AgentSearch HTTP API",
+    "version": "0.1.0",
+    "description": "Public, no-auth HTTP API for AgentSearch — a daily-scored, curated index of AI agents and MCP servers. Mirrors the @agentsearch/mcp MCP server.",
+    "contact": { "name": "Luther Systems", "url": "https://luthersystems.com" },
+    "license": { "name": "MIT", "url": "https://github.com/luthersystems/agentsearch/blob/main/LICENSE" }
+  },
+  "servers": [
+    { "url": "https://agentsearch.luthersystems.com", "description": "production" }
+  ],
+  "paths": {
+    "/api/search": {
+      "post": {
+        "summary": "Search the index",
+        "description": "Ranked agents for a natural-language query. final_score = query_fit × agent_quality.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": { "type": "string" },
+                  "limit": { "type": "integer", "minimum": 1, "maximum": 25, "default": 10 }
+                },
+                "required": ["query"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Top N ranked agents.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "items": { "$ref": "#/components/schemas/SearchResult" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/{name}": {
+      "get": {
+        "summary": "Get one agent profile",
+        "parameters": [
+          { "name": "name", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Full scored profile.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AgentDetails" } } }
+          },
+          "404": { "description": "Agent not in index." }
+        }
+      }
+    },
+    "/api/found-agent": {
+      "post": {
+        "summary": "Live-score an arbitrary agent URL",
+        "description": "Crawls + probes + LLM-scores any URL using the same rubric the batch pipeline uses. Useful for agents not in the index yet.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": { "type": "string", "format": "uri" },
+                  "name": { "type": "string" },
+                  "query": { "type": "string" }
+                },
+                "required": ["url"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Live-scored agent profile.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AgentDetails" } } }
+          }
+        }
+      }
+    },
+    "/api/browse": {
+      "get": {
+        "summary": "Paginated index listing",
+        "parameters": [
+          { "name": "page", "in": "query", "schema": { "type": "integer", "minimum": 1, "default": 1 } },
+          { "name": "page_size", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 200, "default": 100 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of agents.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "page": { "type": "integer" },
+                    "page_size": { "type": "integer" },
+                    "total": { "type": "integer" },
+                    "results": { "type": "array", "items": { "$ref": "#/components/schemas/AgentSummary" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stats": {
+      "get": {
+        "summary": "Index summary stats",
+        "responses": {
+          "200": {
+            "description": "Aggregates across the latest scoring tab.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total_agents": { "type": "integer" },
+                    "alive": { "type": "integer" },
+                    "tab": { "type": "string", "description": "Source tab name, e.g. 'agents 2026-05-16'." },
+                    "top_sources": { "type": "array", "items": { "$ref": "#/components/schemas/Rollup" } },
+                    "top_licenses": { "type": "array", "items": { "$ref": "#/components/schemas/Rollup" } },
+                    "top_capability_clusters": { "type": "array", "items": { "$ref": "#/components/schemas/Rollup" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/.well-known/agent.json": {
+      "get": {
+        "summary": "A2A agent card",
+        "description": "Returns the A2A-format agent card declaring AgentSearch's skills, auth, pricing and documentation.",
+        "responses": { "200": { "description": "Agent card." } }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "SearchResult": {
+        "type": "object",
+        "properties": {
+          "agent_name": { "type": "string" },
+          "agent_url": { "type": "string" },
+          "query_fit": { "type": "number", "minimum": 0, "maximum": 1 },
+          "overall_score": { "type": "number", "minimum": 0, "maximum": 1 },
+          "final_score": { "type": "number", "minimum": 0, "maximum": 1 },
+          "reasoning": { "type": "string" }
+        }
+      },
+      "AgentSummary": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "url": { "type": "string" },
+          "overall_score": { "type": "number" }
+        }
+      },
+      "AgentDetails": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "url": { "type": "string" },
+          "description": { "type": "string" },
+          "capabilities": { "type": "array", "items": { "type": "string" } },
+          "sources": { "type": "array", "items": { "type": "string" } },
+          "raw": { "type": "object", "additionalProperties": true },
+          "blocker": {
+            "type": "object",
+            "properties": {
+              "status": { "type": "string", "enum": ["alive", "dead", "timeout", "error"] },
+              "status_code": { "type": "integer" },
+              "speed_ms": { "type": "number" },
+              "eliminated": { "type": "boolean" }
+            }
+          },
+          "scores": {
+            "type": "object",
+            "properties": {
+              "fame": { "type": "object" },
+              "usability": { "type": "object" },
+              "functionality": { "type": "object" },
+              "call_graph": { "type": "number" },
+              "overall": { "type": "number" }
+            }
+          }
+        }
+      },
+      "Rollup": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "count": { "type": "integer" }
+        }
+      }
+    }
+  }
+}
