@@ -1,0 +1,67 @@
+name: Publish agentsearch to npm
+
+# Publishes the `@luthersystems/agentsearch` npm package (the MCP server in
+# mcp/) on every v* tag. Authentication uses npm trusted publishing via GitHub
+# OIDC — there is no NPM_TOKEN. The package must have this repo + workflow
+# registered as a Trusted Publisher on npmjs.com (see SETUP below).
+#
+# SETUP (one-time, on npmjs.com — the package must exist first):
+#   1. Bootstrap the first release with a granular automation token, since the
+#      Trusted Publisher settings page only appears once a package exists.
+#   2. npmjs.com -> package `@luthersystems/agentsearch` -> Settings ->
+#      Trusted Publisher:
+#        Provider:  GitHub Actions
+#        Org/repo:  luthersystems/agentsearch
+#        Workflow:  npm-publish.yml
+#        Environment: (leave blank)
+#   3. All subsequent releases publish automatically via OIDC on a v* tag.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write          # required for npm OIDC trusted publishing
+    defaults:
+      run:
+        working-directory: mcp
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e  # v6
+        with:
+          node-version: "24"   # ships npm >= 11.5.1, required for OIDC publishing
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Extract version and dist-tag
+        id: version
+        working-directory: .
+        run: |
+          raw="${GITHUB_REF_NAME#v}"
+          echo "version=${raw}" >> "$GITHUB_OUTPUT"
+          # A semver prerelease (v1.2.3-beta.1) publishes under the `next` tag
+          # so it never becomes the default `npm install agentsearch`.
+          if [[ "$raw" == *-* ]]; then
+            echo "tag=next" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build
+        run: npm run build
+
+      - name: Set package version from tag
+        run: npm version "${{ steps.version.outputs.version }}" --no-git-tag-version --allow-same-version
+
+      - name: Publish
+        run: npm publish --provenance --access public --tag "${{ steps.version.outputs.tag }}"

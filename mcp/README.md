@@ -1,4 +1,4 @@
-# @agentsearch/mcp
+# @luthersystems/agentsearch
 
 Model Context Protocol server for [AgentSearch](https://agentsearch.luthersystems.com).
 
@@ -9,7 +9,7 @@ reachability, usability, functionality, and per-query relevance.
 ## Install & run
 
 ```bash
-npx -y @agentsearch/mcp
+npx -y @luthersystems/agentsearch
 ```
 
 ## Add to your MCP client
@@ -20,7 +20,7 @@ equivalent location for your client):
 ```json
 {
   "mcpServers": {
-    "agentsearch": { "command": "npx", "args": ["-y", "@agentsearch/mcp"] }
+    "agentsearch": { "command": "npx", "args": ["-y", "@luthersystems/agentsearch"] }
   }
 }
 ```

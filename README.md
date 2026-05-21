@@ -36,8 +36,8 @@ results are real agents (extracted + scored on the fly).
 ### Via MCP (recommended)
 
 ```bash
-npm install @agentsearch/mcp
-# or:  npx @agentsearch/mcp
+npm install @luthersystems/agentsearch
+# or:  npx @luthersystems/agentsearch
 ```
 
 Add to your MCP client config (Claude Desktop, Claude Code, Cursor, …):
@@ -45,7 +45,7 @@ Add to your MCP client config (Claude Desktop, Claude Code, Cursor, …):
 ```json
 {
   "mcpServers": {
-    "agentsearch": { "command": "npx", "args": ["-y", "@agentsearch/mcp"] }
+    "agentsearch": { "command": "npx", "args": ["-y", "@luthersystems/agentsearch"] }
   }
 }
 ```
@@ -80,6 +80,31 @@ https://agentsearch.luthersystems.com/.well-known/agent.json
 ```
 
 Submit URL to a2aregistry.org or load directly in any A2A-compliant client.
+
+## Releasing the MCP server
+
+The [`mcp/`](./mcp) server is published to npm as
+[`@luthersystems/agentsearch`](https://www.npmjs.com/package/@luthersystems/agentsearch).
+
+Releases are **fully automated** — there is no manual `npm publish` and no npm
+token stored anywhere:
+
+1. Bump `version` in [`mcp/package.json`](./mcp/package.json) (optional — the
+   workflow also derives the version from the tag).
+2. Push a `v*` tag, e.g. `git tag v0.1.1 && git push origin v0.1.1`.
+3. [`.github/workflows/npm-publish.yml`](./.github/workflows/npm-publish.yml)
+   builds the package and publishes it to npm.
+
+Authentication uses **npm trusted publishing over GitHub OIDC**: the workflow
+requests a short-lived GitHub identity token, and npm verifies it against the
+trusted-publisher registered for this repo + workflow. Every release also
+carries a signed [provenance](https://docs.npmjs.com/generating-provenance-statements)
+attestation linking the published package to the exact commit and workflow run.
+
+| Tag form | npm dist-tag | Result |
+|----------|--------------|--------|
+| `v1.2.3` | `latest` | Default install — `npx @luthersystems/agentsearch` |
+| `v1.2.3-beta.1` | `next` | Prerelease — `npx @luthersystems/agentsearch@next` |
 
 ## License
 

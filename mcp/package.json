@@ -1,5 +1,5 @@
 {
-  "name": "@agentsearch/mcp",
+  "name": "@luthersystems/agentsearch",
   "version": "0.1.0",
   "description": "Model Context Protocol server for AgentSearch — find AI agents and MCP servers ranked by reachability, usability and quality.",
   "license": "MIT",
