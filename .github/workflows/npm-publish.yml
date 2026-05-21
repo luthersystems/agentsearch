@@ -1,15 +1,15 @@
 name: Publish agentsearch to npm
 
-# Publishes the `agentsearch` npm package (the MCP server in mcp/) on every
-# v* tag. Authentication uses npm trusted publishing via GitHub OIDC — there
-# is no NPM_TOKEN. The `agentsearch` package must have this repo + workflow
+# Publishes the `@luthersystems/agentsearch` npm package (the MCP server in
+# mcp/) on every v* tag. Authentication uses npm trusted publishing via GitHub
+# OIDC — there is no NPM_TOKEN. The package must have this repo + workflow
 # registered as a Trusted Publisher on npmjs.com (see SETUP below).
 #
 # SETUP (one-time, on npmjs.com — the package must exist first):
 #   1. Bootstrap the first release with a granular automation token, since the
-#      Trusted Publisher settings page only appears once a package exists:
-#        cd mcp && npm install && npm run build && npm publish --access public
-#   2. npmjs.com -> package `agentsearch` -> Settings -> Trusted Publisher:
+#      Trusted Publisher settings page only appears once a package exists.
+#   2. npmjs.com -> package `@luthersystems/agentsearch` -> Settings ->
+#      Trusted Publisher:
 #        Provider:  GitHub Actions
 #        Org/repo:  luthersystems/agentsearch
 #        Workflow:  npm-publish.yml
