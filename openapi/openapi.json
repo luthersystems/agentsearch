@@ -3,7 +3,7 @@
   "info": {
     "title": "AgentSearch HTTP API",
     "version": "0.1.0",
-    "description": "Public, no-auth HTTP API for AgentSearch — a daily-scored, curated index of AI agents and MCP servers. Mirrors the @agentsearch/mcp MCP server.",
+    "description": "Public, no-auth HTTP API for AgentSearch — a daily-scored, curated index of AI agents and MCP servers. Mirrors the @luthersystems/agentsearch MCP server.",
     "contact": { "name": "Luther Systems", "url": "https://luthersystems.com" },
     "license": { "name": "MIT", "url": "https://github.com/luthersystems/agentsearch/blob/main/LICENSE" }
   },
