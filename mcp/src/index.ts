@@ -15,7 +15,9 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
+  ErrorCode,
   ListToolsRequestSchema,
+  McpError,
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 
@@ -61,7 +63,11 @@ const TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        url: { type: "string", description: "Primary URL of the agent (homepage, GitHub repo, A2A card, …)." },
+        url: {
+          type: "string",
+          format: "uri",
+          description: "Primary URL of the agent (homepage, GitHub repo, A2A card, …). http or https only.",
+        },
         name: { type: "string", description: "Display name (optional — defaults to the URL)." },
         query: { type: "string", description: "Optional user query, used for the search-match judge." },
       },
@@ -95,25 +101,32 @@ type ToolName = (typeof TOOLS)[number]["name"];
 // ── Argument validation ─────────────────────────────────────────────────────
 // Tool arguments come from the MCP client, so each one is parsed against its
 // schema before any of it reaches a request. The schemas mirror inputSchema
-// above. found_agent's url is checked to be http(s); the backend crawls it.
-const httpUrl = z
-  .url()
-  .refine((u) => ["http:", "https:"].includes(new URL(u).protocol), "url must be http or https");
+// above. Numbers are coerced, so "5" works as it did before validation.
+// found_agent's url must be http(s). This is defence in depth only: the
+// backend crawls the url, so the real SSRF guard belongs there.
+const httpUrl = z.url({ protocol: /^https?$/, error: "url must be an http or https URL" });
+
+// "." and ".." would be normalised away in /api/agent/<name>, sending the
+// request to another endpoint (encodeURIComponent leaves dots alone).
+const agentName = z
+  .string()
+  .min(1)
+  .refine((n) => n !== "." && n !== "..", "name must not be . or ..");
 
 const ARG_SCHEMAS = {
   search: z.object({
     query: z.string().min(1),
-    limit: z.number().int().min(1).max(25).optional(),
+    limit: z.coerce.number().int().min(1).max(25).optional(),
   }),
-  agent_details: z.object({ name: z.string().min(1) }),
+  agent_details: z.object({ name: agentName }),
   found_agent: z.object({
     url: httpUrl,
     name: z.string().optional(),
     query: z.string().optional(),
   }),
   browse: z.object({
-    page: z.number().int().min(1).default(1),
-    page_size: z.number().int().min(1).max(200).default(100),
+    page: z.coerce.number().int().min(1).default(1),
+    page_size: z.coerce.number().int().min(1).max(200).default(100),
   }),
   stats: z.object({}),
 } satisfies Record<ToolName, z.ZodTypeAny>;
@@ -168,8 +181,6 @@ async function callTool(name: ToolName, rawArgs: unknown): Promise<unknown> {
       ARG_SCHEMAS.stats.parse(rawArgs);
       return getJson("/api/stats");
     }
-    default:
-      throw new Error(`unknown tool: ${name}`);
   }
 }
 
@@ -181,15 +192,26 @@ const server = new Server(
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
 
+function errorMessage(e: unknown): string {
+  if (e instanceof z.ZodError) return z.prettifyError(e);
+  return e instanceof Error ? e.message : String(e);
+}
+
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
+  // An unknown tool or malformed params is a protocol error, not a tool result.
+  let call: z.infer<typeof CALL_PARAMS>;
   try {
-    const { name, arguments: args } = CALL_PARAMS.parse(req.params);
-    const result = await callTool(name, args);
+    call = CALL_PARAMS.parse(req.params);
+  } catch (e: unknown) {
+    throw new McpError(ErrorCode.InvalidParams, errorMessage(e));
+  }
+  try {
+    const result = await callTool(call.name, call.arguments);
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
+    const msg = errorMessage(e);
     return {
       isError: true,
       content: [{ type: "text", text: `agentsearch error: ${msg}` }],
