@@ -97,7 +97,6 @@ type ToolName = (typeof TOOLS)[number]["name"];
 // schema before any of it reaches a request. The schemas mirror inputSchema
 // above. found_agent's url is checked to be http(s); the backend crawls it.
 const httpUrl = z
-  .string()
   .url()
   .refine((u) => ["http:", "https:"].includes(new URL(u).protocol), "url must be http or https");
 
@@ -122,7 +121,7 @@ const ARG_SCHEMAS = {
 // The tools/call request itself: a known tool name and an arguments object.
 const CALL_PARAMS = z.object({
   name: z.enum(Object.keys(ARG_SCHEMAS) as [ToolName, ...ToolName[]]),
-  arguments: z.record(z.unknown()).default({}),
+  arguments: z.record(z.string(), z.unknown()).default({}),
 });
 
 // ── HTTP helpers ────────────────────────────────────────────────────────────
