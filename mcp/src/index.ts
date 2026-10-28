@@ -15,8 +15,11 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
   CallToolRequestSchema,
+  ErrorCode,
   ListToolsRequestSchema,
+  McpError,
 } from "@modelcontextprotocol/sdk/types.js";
+import { z } from "zod";
 
 const BASE_URL = process.env.AGENTSEARCH_BASE_URL || "https://agentsearch.luthersystems.com";
 const USER_AGENT = "agentsearch-mcp/0.1.0";
@@ -60,7 +63,11 @@ const TOOLS = [
     inputSchema: {
       type: "object",
       properties: {
-        url: { type: "string", description: "Primary URL of the agent (homepage, GitHub repo, A2A card, …)." },
+        url: {
+          type: "string",
+          format: "uri",
+          description: "Primary URL of the agent (homepage, GitHub repo, A2A card, …). http or https only.",
+        },
         name: { type: "string", description: "Display name (optional — defaults to the URL)." },
         query: { type: "string", description: "Optional user query, used for the search-match judge." },
       },
@@ -91,6 +98,45 @@ const TOOLS = [
 
 type ToolName = (typeof TOOLS)[number]["name"];
 
+// ── Argument validation ─────────────────────────────────────────────────────
+// Tool arguments come from the MCP client, so each one is parsed against its
+// schema before any of it reaches a request. The schemas mirror inputSchema
+// above. Numbers are coerced, so "5" works as it did before validation.
+// found_agent's url must be http(s). This is defence in depth only: the
+// backend crawls the url, so the real SSRF guard belongs there.
+const httpUrl = z.url({ protocol: /^https?$/, error: "url must be an http or https URL" });
+
+// "." and ".." would be normalised away in /api/agent/<name>, sending the
+// request to another endpoint (encodeURIComponent leaves dots alone).
+const agentName = z
+  .string()
+  .min(1)
+  .refine((n) => n !== "." && n !== "..", "name must not be . or ..");
+
+const ARG_SCHEMAS = {
+  search: z.object({
+    query: z.string().min(1),
+    limit: z.coerce.number().int().min(1).max(25).optional(),
+  }),
+  agent_details: z.object({ name: agentName }),
+  found_agent: z.object({
+    url: httpUrl,
+    name: z.string().optional(),
+    query: z.string().optional(),
+  }),
+  browse: z.object({
+    page: z.coerce.number().int().min(1).default(1),
+    page_size: z.coerce.number().int().min(1).max(200).default(100),
+  }),
+  stats: z.object({}),
+} satisfies Record<ToolName, z.ZodTypeAny>;
+
+// The tools/call request itself: a known tool name and an arguments object.
+const CALL_PARAMS = z.object({
+  name: z.enum(Object.keys(ARG_SCHEMAS) as [ToolName, ...ToolName[]]),
+  arguments: z.record(z.string(), z.unknown()).default({}),
+});
+
 // ── HTTP helpers ────────────────────────────────────────────────────────────
 async function postJson(path: string, body: unknown): Promise<unknown> {
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -111,30 +157,30 @@ async function getJson(path: string): Promise<unknown> {
 }
 
 // ── Tool dispatch ───────────────────────────────────────────────────────────
-async function callTool(name: ToolName, args: Record<string, unknown>): Promise<unknown> {
+async function callTool(name: ToolName, rawArgs: unknown): Promise<unknown> {
   switch (name) {
     case "search": {
-      const { query, limit } = args as { query: string; limit?: number };
+      const { query, limit } = ARG_SCHEMAS.search.parse(rawArgs);
       const data = await postJson("/api/search", { query, limit }) as { results?: unknown[] };
       return { query, results: (data.results ?? []).slice(0, limit ?? 10) };
     }
     case "agent_details": {
-      const { name: agentName } = args as { name: string };
+      const { name: agentName } = ARG_SCHEMAS.agent_details.parse(rawArgs);
       return getJson(`/api/agent/${encodeURIComponent(agentName)}`);
     }
     case "found_agent": {
-      const { url, name: agentName, query } = args as { url: string; name?: string; query?: string };
+      const { url, name: agentName, query } = ARG_SCHEMAS.found_agent.parse(rawArgs);
       return postJson("/api/found-agent", { url, name: agentName, query });
     }
     case "browse": {
-      const { page = 1, page_size = 100 } = args as { page?: number; page_size?: number };
-      return getJson(`/api/browse?page=${page}&page_size=${page_size}`);
+      const { page, page_size } = ARG_SCHEMAS.browse.parse(rawArgs);
+      const params = new URLSearchParams({ page: String(page), page_size: String(page_size) });
+      return getJson(`/api/browse?${params}`);
     }
     case "stats": {
+      ARG_SCHEMAS.stats.parse(rawArgs);
       return getJson("/api/stats");
     }
-    default:
-      throw new Error(`unknown tool: ${name}`);
   }
 }
 
@@ -146,15 +192,26 @@ const server = new Server(
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
 
+function errorMessage(e: unknown): string {
+  if (e instanceof z.ZodError) return z.prettifyError(e);
+  return e instanceof Error ? e.message : String(e);
+}
+
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
-  const { name, arguments: args = {} } = req.params;
+  // An unknown tool or malformed params is a protocol error, not a tool result.
+  let call: z.infer<typeof CALL_PARAMS>;
   try {
-    const result = await callTool(name as ToolName, args as Record<string, unknown>);
+    call = CALL_PARAMS.parse(req.params);
+  } catch (e: unknown) {
+    throw new McpError(ErrorCode.InvalidParams, errorMessage(e));
+  }
+  try {
+    const result = await callTool(call.name, call.arguments);
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
   } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : String(e);
+    const msg = errorMessage(e);
     return {
       isError: true,
       content: [{ type: "text", text: `agentsearch error: ${msg}` }],
