@@ -17,6 +17,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { z } from "zod";
 
 const BASE_URL = process.env.AGENTSEARCH_BASE_URL || "https://agentsearch.luthersystems.com";
 const USER_AGENT = "agentsearch-mcp/0.1.0";
@@ -91,6 +92,39 @@ const TOOLS = [
 
 type ToolName = (typeof TOOLS)[number]["name"];
 
+// ── Argument validation ─────────────────────────────────────────────────────
+// Tool arguments come from the MCP client, so each one is parsed against its
+// schema before any of it reaches a request. The schemas mirror inputSchema
+// above. found_agent's url is checked to be http(s); the backend crawls it.
+const httpUrl = z
+  .string()
+  .url()
+  .refine((u) => ["http:", "https:"].includes(new URL(u).protocol), "url must be http or https");
+
+const ARG_SCHEMAS = {
+  search: z.object({
+    query: z.string().min(1),
+    limit: z.number().int().min(1).max(25).optional(),
+  }),
+  agent_details: z.object({ name: z.string().min(1) }),
+  found_agent: z.object({
+    url: httpUrl,
+    name: z.string().optional(),
+    query: z.string().optional(),
+  }),
+  browse: z.object({
+    page: z.number().int().min(1).default(1),
+    page_size: z.number().int().min(1).max(200).default(100),
+  }),
+  stats: z.object({}),
+} satisfies Record<ToolName, z.ZodTypeAny>;
+
+// The tools/call request itself: a known tool name and an arguments object.
+const CALL_PARAMS = z.object({
+  name: z.enum(Object.keys(ARG_SCHEMAS) as [ToolName, ...ToolName[]]),
+  arguments: z.record(z.unknown()).default({}),
+});
+
 // ── HTTP helpers ────────────────────────────────────────────────────────────
 async function postJson(path: string, body: unknown): Promise<unknown> {
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -111,26 +145,28 @@ async function getJson(path: string): Promise<unknown> {
 }
 
 // ── Tool dispatch ───────────────────────────────────────────────────────────
-async function callTool(name: ToolName, args: Record<string, unknown>): Promise<unknown> {
+async function callTool(name: ToolName, rawArgs: unknown): Promise<unknown> {
   switch (name) {
     case "search": {
-      const { query, limit } = args as { query: string; limit?: number };
+      const { query, limit } = ARG_SCHEMAS.search.parse(rawArgs);
       const data = await postJson("/api/search", { query, limit }) as { results?: unknown[] };
       return { query, results: (data.results ?? []).slice(0, limit ?? 10) };
     }
     case "agent_details": {
-      const { name: agentName } = args as { name: string };
+      const { name: agentName } = ARG_SCHEMAS.agent_details.parse(rawArgs);
       return getJson(`/api/agent/${encodeURIComponent(agentName)}`);
     }
     case "found_agent": {
-      const { url, name: agentName, query } = args as { url: string; name?: string; query?: string };
+      const { url, name: agentName, query } = ARG_SCHEMAS.found_agent.parse(rawArgs);
       return postJson("/api/found-agent", { url, name: agentName, query });
     }
     case "browse": {
-      const { page = 1, page_size = 100 } = args as { page?: number; page_size?: number };
-      return getJson(`/api/browse?page=${page}&page_size=${page_size}`);
+      const { page, page_size } = ARG_SCHEMAS.browse.parse(rawArgs);
+      const params = new URLSearchParams({ page: String(page), page_size: String(page_size) });
+      return getJson(`/api/browse?${params}`);
     }
     case "stats": {
+      ARG_SCHEMAS.stats.parse(rawArgs);
       return getJson("/api/stats");
     }
     default:
@@ -147,9 +183,9 @@ const server = new Server(
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
 
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
-  const { name, arguments: args = {} } = req.params;
   try {
-    const result = await callTool(name as ToolName, args as Record<string, unknown>);
+    const { name, arguments: args } = CALL_PARAMS.parse(req.params);
+    const result = await callTool(name, args);
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
