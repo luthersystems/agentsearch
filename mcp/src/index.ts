@@ -17,6 +17,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { z } from "zod";
 
 const BASE_URL = process.env.AGENTSEARCH_BASE_URL || "https://agentsearch.luthersystems.com";
 const USER_AGENT = "agentsearch-mcp/0.1.0";
@@ -110,27 +111,54 @@ async function getJson(path: string): Promise<unknown> {
   return res.json();
 }
 
+// ── Argument schemas ────────────────────────────────────────────────────────
+// Every tool argument is parsed here before it reaches fetch(). The MCP client
+// is untrusted input: the JSON inputSchema above is advice to the model, not a
+// check, so a client can send `page: "1/../../admin"` and it would land in the
+// request path. Parsing with zod enforces the same types and bounds the
+// inputSchema advertises, which also keeps the request on BASE_URL's API.
+// (`url` in found_agent is sent in the JSON body, not fetched here; the
+// AgentSearch backend validates and crawls it.)
+const ARG_SCHEMAS = {
+  search: z.object({
+    query: z.string().min(1),
+    limit: z.number().int().min(1).max(25).optional(),
+  }),
+  agent_details: z.object({ name: z.string().min(1) }),
+  found_agent: z.object({
+    url: z.string().url(),
+    name: z.string().optional(),
+    query: z.string().optional(),
+  }),
+  browse: z.object({
+    page: z.number().int().min(1).default(1),
+    page_size: z.number().int().min(1).max(200).default(100),
+  }),
+  stats: z.object({}),
+} as const;
+
 // ── Tool dispatch ───────────────────────────────────────────────────────────
 async function callTool(name: ToolName, args: Record<string, unknown>): Promise<unknown> {
   switch (name) {
     case "search": {
-      const { query, limit } = args as { query: string; limit?: number };
+      const { query, limit } = ARG_SCHEMAS.search.parse(args);
       const data = await postJson("/api/search", { query, limit }) as { results?: unknown[] };
       return { query, results: (data.results ?? []).slice(0, limit ?? 10) };
     }
     case "agent_details": {
-      const { name: agentName } = args as { name: string };
+      const { name: agentName } = ARG_SCHEMAS.agent_details.parse(args);
       return getJson(`/api/agent/${encodeURIComponent(agentName)}`);
     }
     case "found_agent": {
-      const { url, name: agentName, query } = args as { url: string; name?: string; query?: string };
+      const { url, name: agentName, query } = ARG_SCHEMAS.found_agent.parse(args);
       return postJson("/api/found-agent", { url, name: agentName, query });
     }
     case "browse": {
-      const { page = 1, page_size = 100 } = args as { page?: number; page_size?: number };
+      const { page, page_size } = ARG_SCHEMAS.browse.parse(args);
       return getJson(`/api/browse?page=${page}&page_size=${page_size}`);
     }
     case "stats": {
+      ARG_SCHEMAS.stats.parse(args);
       return getJson("/api/stats");
     }
     default:
@@ -146,10 +174,18 @@ const server = new Server(
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
 
+// The tool name and the argument object are parsed too, so an unknown tool
+// is refused with a clear error and only a plain object reaches callTool.
+const TOOL_NAMES = TOOLS.map((t) => t.name) as [ToolName, ...ToolName[]];
+const CALL_PARAMS = z.object({
+  name: z.enum(TOOL_NAMES),
+  arguments: z.record(z.unknown()).default({}),
+});
+
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
-  const { name, arguments: args = {} } = req.params;
   try {
-    const result = await callTool(name as ToolName, args as Record<string, unknown>);
+    const { name, arguments: args } = CALL_PARAMS.parse(req.params);
+    const result = await callTool(name, args);
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
     };
