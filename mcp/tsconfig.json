@@ -6,7 +6,14 @@
     "esModuleInterop": true,
     "strict": true,
     "skipLibCheck": true,
+    // TypeScript 7 no longer infers rootDir from the sources (it defaults
+    // to the tsconfig folder), so without this the build would write
+    // dist/src/index.js and break "main" and "bin" in package.json.
+    "rootDir": "src",
     "outDir": "dist",
+    // TypeScript 7 loads no @types packages unless listed (types defaults
+    // to []). The server uses Node globals such as process.
+    "types": ["node"],
     "declaration": true,
     "sourceMap": true,
     "resolveJsonModule": true
